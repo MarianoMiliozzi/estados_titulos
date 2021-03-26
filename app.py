@@ -1,117 +1,30 @@
-##################################### IMPORTING ################################
-# -*- coding: utf-8 -*-
-# importamos las librerias que implementaremos
-import pandas as pd;
-import base64;
-import io
-import plotly.graph_objs as go
-import dash;
-import dash_table;
-from dash.dependencies import Output, Input
-import dash_core_components as dcc;
+import pandas as pd
+import assets.consulta as consulta
+
+import dash
+import dash_core_components as dcc
 import dash_html_components as html
-# ademas importamos la funcion de consulta.py que ejecuta las querys SQL
-import assets.consulta as consulta;
-from collections import defaultdict
+from dash.dependencies import Output, Input, State
+import dash_table
 
-##################################### IMPORTING ################################
-#################################### CONSULTA DB ###############################
+activos = consulta.get_solicitudes_activas()
+activos.grupo.fillna('Indeterminado',inplace=True)
 
-# instanciamos en totales todos los datos de preinscriptos y tambien guardamos un diccionario con nombres y siglas de propuestas
-estados = consulta.consulta_estados()
-datos = consulta.datos_uni()
+activos_dic = {activos.id_.iloc[i] : (activos.certificado.iloc[i],
+                                      list(activos.loc[activos.certificado == activos.certificado.iloc[i]].sol_id.unique()),
+                                      list(activos.loc[activos.certificado == activos.certificado.iloc[i]].persona.unique())) for i in range(len(activos))}
 
-nacion = pd.read_csv('assets/nacionalidades.csv',encoding='latin',sep='|')
-nacion_dic = {nacion.cod_nacionalidad.iloc[i]:nacion.nacionalidad.iloc[i] for i in range(len(nacion))}
-
-#################################### CONSULTA DB ###############################
-#################################### RAW PYTHON  ###############################
-# genero un diccionario por default para guardar un mapeo de nro_solicitud vs. nro_documento
-avaiable_dic = defaultdict(lambda: '',
-                           {str(datos.nro_documento.iloc[i]): datos.nro_solicitud.iloc[i] for i in range(len(datos))})
-# genero una lista de nros de documentos disponibles para buscar
-avaiable = list(datos.nro_documento.unique())
-avaiable = [str(i) for i in avaiable]
-
-propuestas_lst = list(datos.certificado.unique())
-
-# genero una tabla con la documentación presentada
-documentacion = ['solicitud_alumno', 'libre_deuda', 'tesis_tfi_cd', 'titulo_grado',
-                 'documento_identidad', 'constancia_actividades_aprobadas',
-                 'nota_director', 'acta_final', 'totalidad_actas']
-
-docu_dic = {'solicitud_alumno': 'Solicitud del Alumno', 'libre_deuda': 'Libre Deuda',
-            'tesis_tfi_cd': 'Tesis/TFI en CD', 'titulo_grado': 'Copia de Título de Grado',
-            'documento_identidad': 'Copia de Documento de Identidad',
-            'constancia_actividades_aprobadas': 'Constancia de Actividades Aprobadas',
-            'nota_director': 'Nota del Director', 'acta_final': 'Copia de Acta Final',
-            'totalidad_actas': 'Totalidad de Actas en Original'}
-
-try:
-    estados.fecha_cambio_estado = pd.DatetimeIndex(estados.fecha_cambio_estado).strftime("%d/%m")  # /%Y
-except:
-    pass
-
-try:
-    datos.fecha_nacimiento = pd.DatetimeIndex(datos.fecha_nacimiento).strftime("%d/%m/%Y")  #
-except:
-    pass
+opciones_filtrado = {'Certificado':'certificado',
+                     'Grupo':'grupo',
+                     'Estado':'estado_actual',
+                     'Solicitud':'nro_solicitud'}
 
 
-# quito la numeración de estado nuevo
-estados['estado_nuevo'] = [' '.join(estados.estado_nuevo.iloc[i].split('. ')[1:]) for i in range(len(estados))]
-
-# agrego saltos de linea
-estados['estado_nuevo'] = [estados.estado_nuevo.iloc[i].replace(' - ', '\n') for i in range(len(estados))]
-
-dic_acciones = {'Iniciar Solicitud': 'Iniciar Solicitud',
-                'Presenta Solicitud': 'Presenta Solicitud',
-                'Observar Solicitud': 'Observar Solicitud',
-                'Solicitar Expte.': 'Solicitar Expediente',
-                'Expte. Recibido': 'Expediente Recibido',
-                'Normativa Correcta / Emitir Analítico': 'Emitir Analítico',
-                'Recibir Diploma': 'Recibir Diploma',
-                'b. Cargar en SIDCER': 'Cargar en SIDCER',
-                'c. Observar SIDCER': 'Observar SIDCER',
-                'Corregir SIDCER': 'Corregir SIDCER',
-                'Sacar Foto / Subir Imagen': 'Subir Imagen',
-                'Aprobar Imagen': 'Aprobar Imagen',
-                'Pase a Colación / Entrega': 'Pase a Colación',
-                'Pase a Archivo Definitivo': 'Pase a Archivo Definitivo'}
-
-estados['accion'] = estados.accion.map(dic_acciones)
-
-# reordeno las columnas
-estados = estados[
-    ['nro_solicitud', 'fecha_cambio_estado', 'estado_anterior', 'accion', 'estado_nuevo', 'observaciones']]
-# defino un dic para renombrar las columnas al mostrarlas
-
-dic_estados_columns = {'fecha_cambio_estado': 'Fecha',
-                       'estado_anterior': 'Estado Anterior',
-                       'accion': 'Acción',
-                       'estado_nuevo': 'Estado Actual',
-                       'observaciones': 'Observaciones',
-                       'nro_solicitud': 'Nro Solicitud',
-                       'presento' : 'Presentó',
-                       '':'',
-                       }
-
-dic_datos_columns = {'grupo':'Grupo',
-                     'nro_solicitud':'Nro Solicitud',
-                     'fecha_alta':'Fecha Alta',
-                     'apellido':'Apellido',
-                     'nombres':'Nombres',
-                     'desc_tipo_documento':'Tipo Doc',
-                     'nro_documento':'Documento',
-                     'estado_actual':'Estado Actual'
-                     }
-
-################################### RAW PYTHON ###############################
-################################## APP SETTING ###############################
-# seteamos la url del ccs
+#------------------------------------------------------------------------
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 # instanciamos la app
-app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
+app = dash.Dash(__name__, external_stylesheets=external_stylesheets, suppress_callback_exceptions=True)
+
 # le definimos un título
 app.title = 'Estado de Titulaciones de POSGRADOS'
 # instanciamos el servidor
@@ -128,415 +41,428 @@ app.layout = html.Div([
                  html.Img(src='/assets/untref_logo.jpg',
                           className='four columns',
                           style={'margin-top': '13px'}),
-             ]
+                 ]
+             ),
+    # inserto una linea de separacion
+    html.Div(style={'margin-bottom':'-20px','margin-top':'-20px'},children =[html.Hr()]),
+
+    # generamos un selector de filtro
+    html.Div(className='row cuerpo',
+             style={'margin-bottom': '5px'},
+             children=[
+                 html.Label(children='Seleccione un criterio de filtrado:',
+                            className='row'),
+                 dcc.RadioItems(
+                     id='filtro-elegido',
+                     options=[{'label': k, 'value': k} for k in opciones_filtrado],
+                     value='Certificado',
+                     labelStyle={'display': 'inline-block', 'margin-right': '15px'},
+                 )
+             ]),
+
+    # nos muestra la opcion del filtro elegido
+    html.Div(className='row cuerpo',
+             children = [
+                 html.Div(id='elemento-filtrado',
+                          children=[
+                              # creo uno falso para evitar la falla del callback
+                              html.Div(hidden=True,children=dcc.Input(id='dropdown-filtro'),)
+                          ]),
+                        ]
              ),
 
-    # SELECCION DE CERTIFICADO
-    html.Div(children=[
-        dcc.Dropdown(id='carrera-elegida',
-                     options=[dict({'label': propuestas_lst[i], 'value': propuestas_lst[i]}) for i in
-                              range(len(propuestas_lst))],
-                     value='',
-                     clearable=True,
-                     placeholder='Seleccione un Certificado',
-#                    persistence=True,  # !!! INVESTIGAR SI SE GUARDA LOCAL ESTÁ BUENO
-                     ),
-        ]
-    ),
+    # inserto una linea de separacion
+    html.Div(style={'margin-bottom': '-20px', 'margin-top': '-15px'}, children=[html.Hr()]),
 
-    # TABLA DE TOTAL POR CERTIFICADO
-    html.Div(id='div-tabla-estados-totales',
-             className='row',
-             style={'text-align':'center',
-                    'align-content':'center'},
-             hidden=False,
+    # segun el elemento filtrado
+    html.Div(className='row cuerpo',
              children=[
-                 html.Hr(),
-                 html.H5(id='titulo-carrera-elegida'),
-                 html.Div(style={#'width':'70%',
-                                 'padding-left':'10%',
-                                 'padding-right':'10%',},
-                          children=[
-                              dash_table.DataTable(
-                                 id='tabla-estados-totales',
-                                 row_selectable="single",
-                                 include_headers_on_copy_paste=True,
-                                 # GENERL STYLE
-                                 style_cell={
-                                     'textAlign': 'left',
-                                 },
-                                 style_data={'whiteSpace': 'pre-line'},
-                                 # ancho columnas
-                                 style_cell_conditional=[
-                                     {
-                                         'if': {'column_id': 'estado_actual'},
-                                         'textAlign': 'center',
-                                         'fontWeight': 'bold',
-                                         'width':'300px',
+                 # establecemos el título según lo filtrado.
+                 html.H5(id='detalle-solicitudes-titulo'),
+                 html.P(id='detalle-solicitudes-cantidad'),
+
+                # vemos las solicitudes, filtradas o no
+                dash_table.DataTable(id='tabla-solicitudes',
+                                     row_selectable='single',
+                                     include_headers_on_copy_paste=True,
+                                     row_deletable=True,
+                                     style_header={
+                                         'backgroundColor': 'rgb(230, 230, 230)',
+                                         'fontWeight': 'bold'
                                      },
-                                     {
-                                         'if': {'column_id': ['nro_solicitud','grupo','fecha_alta']},
-                                         'textAlign': 'center',
-                                         'width':'120px',
-                                     },
-                                     {
-                                         'if': {'column_id': ['apellido','nombres']},
-                                         'textAlign': 'center',
-                                         'width': '200px',
-                                     }],
-                                 ## STRIPED ROWS
-                                 style_data_conditional=[
-                                     {
-                                         'if': {'row_index': 'odd'},
-                                         'backgroundColor': 'rgb(248, 248, 248)',
-                                     }
-                                 ],
-                                 ## HEADER
-                                 style_header={
-                                     'backgroundColor': 'rgb(230, 230, 230)',
-                                     'fontWeight': 'bold'
-                                 },
-                            ),]
-                 ),
-             ]
+                                     style_cell_conditional = [
+                                        {
+                                            'if': {'column_id': 'Solicitud'},
+                                            'textAlign': 'center',
+                                            'fontWeight': 'bold'
+                                        },
+                                        {
+                                            'if': {'column_id': 'Grupo'},
+                                            'textAlign': 'center',
+                                            'fontWeight': 'bold',
+                                            'minWidth': '70px',
+                                        },
+                                    ],
+                                    style_cell = {
+                                                     'whiteSpace': 'normal',
+                                                     'height': 'auto',
+                                                     'textAlign': 'left',
+                                                 },
+                                    ),
+                 ]
              ),
 
-    html.Div(id='datos-alumno-individual',
-             style={'background-color':'#EEEEEE',
-                    'margin-left':'5%',
-                    'margin-right':'5%',
-                    'margin-top':'10px',
-                    'border-radius':'20px',
-                    },
-             hidden=True,
+    # inserto una linea de separacion
+    html.Div(style={'margin-bottom': '-20px', 'margin-top': '-15px'}, children=[html.Hr()]),
+
+    # finalmente muestro los datos de la solicitud, junto a los datos de la persona y la documentación presentada
+    html.Div(id='div-solicitud-elegida',
+             className='datos cuerpo',
              children=[
-                 # HIDDEN para alojar el ID de trámite
-                 html.Div(html.H3(id='tramite-seleccionado', hidden=True, children='', )),
-
-                 # CABEZERA ALUMNO
-                 html.Div(id='heather-alumno',
-                          style={'text-align': 'center',
-                                 'padding': '2%',
-                                 },
-                          children=[
-                              html.H3(id='apellido',
-                                      style={'fontWeight': 'bold'})
-                          ]
+                 # div de estados
+                 html.Div(className='cajasdatos',
+                          children = [html.Label(id='nro-solicitud-elegida'),
+                                      dash_table.DataTable(
+                                          id='tabla-sol-elegida',
+                                          style_cell={
+                                              'whiteSpace': 'normal',
+                                              'height': 'auto',
+                                              'textAlign': 'left',
+                                              },
+                                          style_header={
+                                              'backgroundColor': 'rgb(230, 230, 230)',
+                                              'fontWeight': 'bold'
+                                              },
+                                          )
+                                      ]
                           ),
 
-                 # TABLA DE DOCUMENTACION PRESENTADA
-                 html.Div(id='div-datos-documentacion',
-                          className='row',
-                          hidden=True,
-                          children=[
-                              # DATOS PRINCIPALES
-                              html.Hr(style={'margin':'0px'}),
-                              html.Div(className='six columns',
-                                       children=[
-                                           html.H5(children='Datos Principales'),
-
-                                           html.Div(className='span-mio',
-                                                    children=[
-                                                        html.Span('Documento Tipo: ', style={'fontWeight': 'bold'}),
-                                                        html.Span(id='docu-tipo'),
-                                                        html.Br(),
-                                                        html.Span('Documento Número: ', style={'fontWeight': 'bold'}),
-                                                        html.Span(id='docu-numero'),
-                                                        html.Br(),
-                                                        html.Span('Nacionalidad: ', style={'fontWeight': 'bold'}),
-                                                        html.Span(id='nacionalidad'),
-                                                        html.Br(),
-                                                        html.Span('Fecha de Nacimiento: ', style={'fontWeight': 'bold'}),
-                                                        html.Span(id='fecha-nacimiento'),])
-                                       ]),
-
-                              html.Div(className='five columns',
-
-                                       children=[
-                                           html.H5(children='Documentación Presentada',
-                                                   style={'text-align':'right'}),
-                                           html.Div(
-                                               dash_table.DataTable(
-                                                   id='tabla-doc-presentada',
-                                                   style_as_list_view=True,
-                                                   # FECHA ACCION BOLD
-                                                   style_cell_conditional=[
-                                                       {
-                                                           'if': {'column_id': 'presento'},
-                                                           'textAlign': 'center',
-                                                           'fontWeight': 'bold',
-                                                           'padding-left': '10px',
-                                                           'padding-right': '10px',
-                                                       }
-                                                   ],
-                                               ),
-                                           ),
-                                       ]),
-                          ]
+                 # div de datos de la persona
+                 html.Div(className='cajasdatos',
+                          children = [html.Label(id='persona-elegida'),
+                                      dash_table.DataTable(
+                                          id='tabla-per-elegida',
+                                          style_cell={
+                                              'whiteSpace': 'normal',
+                                              'height': 'auto',
+                                              'textAlign': 'left',
+                                              },
+                                          style_header={
+                                              'backgroundColor': 'rgb(230, 230, 230)',
+                                              'fontWeight': 'bold'
+                                              },
+                                          )
+                                      ]
                           ),
 
-                 # TABLA DE CAMBIOS DE ESTADOS
-                 html.Div(id='div-tabla-cambios-estados',
-                          className='row',
-                          hidden=True,
-                          style={'padding':'4%',
-                                 'padding-top':'0%'},
+                 # div de datos de la persona
+                 html.Div(className='row cajasdatos',
                           children=[
-                              html.Hr(style={'padding':'0',}),
-                              html.H5(children='Cambios de Estados',),
-                              dash_table.DataTable(
+                     html.Div(className='five columns cajasdatos',
+                              children=[
+                                  html.Label(id='solicitud-elegida-datos'),
 
-                                  id='tabla-estados-cambios',
-                                  style_as_list_view=True,
-
-                                  # GENERL STYLE
-                                  style_cell={
-                                      'whiteSpace': 'normal',
-                                      'height': 'auto',
-                                      'textAlign': 'left',
-                                  },
-                                  # LINE BREAKS
-                                  style_data={'whiteSpace': 'pre-line'},
-                                  # FECHA ACCION BOLD
-                                  style_cell_conditional=[
-                                      {
-                                          'if': {'column_id': c},
-                                          'textAlign': 'center',
-                                          'fontWeight': 'bold',
-                                          'padding-left': '10px',
-                                          'padding-right': '10px',
-                                          # 'width':'100px',
-                                      } for c in ['fecha_cambio_estado', 'accion']
-                                  ],
-                                  ## STRIPED ROWS
-                                  style_data_conditional=[
-                                      {
-                                          'if': {'row_index': 'odd'},
-                                          'backgroundColor': 'rgb(248, 248, 248)',
-                                      }
-                                  ],
-                                  ## HEADER
-                                  style_header={
-                                      'backgroundColor': 'rgb(230, 230, 230)',
-                                      'fontWeight': 'bold'
-                                  },
-                                    )
+                                  dash_table.DataTable(
+                                      id='tabla-datos-sol-elegida',
+                                      style_cell={
+                                          'whiteSpace': 'normal',
+                                          'height': 'auto',
+                                          'textAlign': 'left',
+                                          },
+                                      style_header={
+                                          'backgroundColor': 'rgb(230, 230, 230)',
+                                          'fontWeight': 'bold'
+                                          },
+                                      )
                               ]
                               ),
+
+                     # div de documentacion presentada
+                     html.Div(className='four columns cajasdatos',
+                              children=[html.Label(id='solicitud-elegida-documentacion'),
+                                        dash_table.DataTable(
+                                            id='tabla-datos-sol-documentacion',
+                                            style_cell={
+                                                'whiteSpace': 'normal',
+                                                'height': 'auto',
+                                                'textAlign': 'left',
+                                                },
+                                            style_header={
+                                                'backgroundColor': 'rgb(230, 230, 230)',
+                                                'fontWeight': 'bold'
+                                                },
+                                            )
+                                        ]
+                              )
+                     ]
+                 )
                  ]
              )
-
-], className='cuerpo',
+    ], className='cuerpo',
 )
-
 
 ################################ APP LAYOUT ##################################
 ################################ CALL BACKS ##################################
 @app.callback(
+            Output('elemento-filtrado', 'children'),
+            Input('filtro-elegido', 'value')
+)
+def set_filtro(filtro_elegido):
+    c = list(activos.certificado.unique())
+    e = list(activos.estado.unique())
+    g = list(activos.grupo.unique())
+    c.sort() ; e.sort()
+
+    if filtro_elegido == 'Certificado':
+        return_filtro = dcc.Dropdown(id='dropdown-filtro', options=[dict({'label': c[i], 'value': c[i]}) for i in range(len(c))],
+                                     placeholder='seleccione una carrera')
+    elif filtro_elegido == 'Grupo':
+        return_filtro = dcc.Dropdown(id='dropdown-filtro', options=[dict({'label': g[i], 'value': g[i]}) for i in range(len(g))],
+                                     placeholder='seleccione un grupo')
+    elif filtro_elegido == 'Estado':
+        return_filtro = dcc.Dropdown(id='dropdown-filtro', options=[dict({'label': e[i], 'value': e[i]}) for i in range(len(e))],
+                                     placeholder='seleccione un estado')
+    elif filtro_elegido == 'Solicitud':
+        return_filtro = dcc.Input(id='dropdown-filtro', className='six columns', autoFocus=True, type='number',
+                                  placeholder='ingrese un nro de solicitud')
+
+    return [return_filtro]
+
+@app.callback(
     [
-        dash.dependencies.Output('div-tabla-estados-totales', 'hidden'),
-        dash.dependencies.Output('tabla-estados-totales', 'data'),
-        dash.dependencies.Output('tabla-estados-totales', 'columns'),
-
-        dash.dependencies.Output('titulo-carrera-elegida', 'children'),
-
-        dash.dependencies.Output('tabla-estados-totales', 'derived_virtual_selected_rows'),
-        dash.dependencies.Output('tabla-estados-totales', 'selected_rows'),
+        Output('tabla-solicitudes', 'data'),
+        Output('tabla-solicitudes', 'columns'),
+        Output('nro-solicitud-elegida','children'),
+        Output('persona-elegida','children'),
+        Output('detalle-solicitudes-titulo','children'),
+        Output('detalle-solicitudes-cantidad','children'),
     ],
     [
-        dash.dependencies.Input('carrera-elegida', 'value')
-    ]
+        Input('filtro-elegido', 'value'),
+        Input('dropdown-filtro','value'),
+        Input('tabla-solicitudes', 'derived_virtual_selected_rows'),
+    ],
 )
-def carrera_totales(carrera):
+def set_solicitudes_table(filtro_elegido,elemento_filtrado,fila):
+    totales = consulta.get_solicitudes_filtradas(nros_solicitud=list(activos.sol_id.unique()))
+    totales.grupo.fillna('Indeterminado',inplace=True)
 
-    if carrera == None:
-        carrera = ''
-
-    if carrera != '':
-        tabla_totales = datos.copy()
-
-        tabla_totales = tabla_totales.loc[tabla_totales.certificado == carrera]
-
-        tabla_totales = tabla_totales[['grupo', 'nro_solicitud', 'fecha_alta', 'apellido', 'nombres']]
-
-
-
-        estados_detalle = estados.loc[estados.nro_solicitud.isin(tabla_totales.nro_solicitud.unique())]
-        estados_detalle = estados_detalle.drop_duplicates(subset='nro_solicitud',keep='last')
-
-        tabla_totales['estado_actual'] = tabla_totales.nro_solicitud.map(lambda x : estados_detalle.loc[estados_detalle.nro_solicitud == x].estado_nuevo.iloc[0])
-
-        return [False,  # visibilidad del div de la tabla
-                tabla_totales.to_dict('records'),
-                [{"name": dic_datos_columns[i], "id": i} for i in tabla_totales.columns],
-                carrera,
-                [],
-                [],
-                ]
-
+    if elemento_filtrado == None:
+        filtrados = totales.copy()
+        cantidad = filtrados.shape[0]
+        titulo = 'Solicitudes totales'
     else:
-        tabla_totales = freedb
-        carrera = ''
-        return [True,  # visibilidad del div de la tabla
-                tabla_totales.to_dict('records'),
-                [{"name": i, "id": i} for i in tabla_totales.columns],
-                carrera,
-                [],
-                [],
-                ]
+        if filtro_elegido == 'Certificado':
+            filtrados = totales.loc[totales.certificado == elemento_filtrado]
+            cantidad = filtrados.shape[0]
+            titulo = f'Solicitudes de {elemento_filtrado}'
+        elif filtro_elegido == 'Grupo':
+            matches = []
+            for i in totales.grupo:
+                if str(elemento_filtrado) in str(i):
+                    matches.append(i)
+            filtrados = totales.loc[totales.grupo.isin(matches)]
+            cantidad = filtrados.shape[0]
+            titulo = f'Solicitudes del grupo: {elemento_filtrado}'
+        elif filtro_elegido == 'Solicitud':
+            matches = []
+            for i in totales.nro_solicitud:
+                if str(elemento_filtrado) in str(i):
+                    matches.append(i)
+            filtrados = totales.loc[totales.nro_solicitud.isin(matches)]
+            cantidad = filtrados.shape[0]
+            titulo = f'Solicitud {elemento_filtrado}'
+        elif filtro_elegido == 'Estado':
+            matches = []
+            for i in totales.estado_actual:
+                if str(elemento_filtrado) in str(i):
+                    matches.append(i)
+            filtrados = totales.loc[totales.estado_actual.isin(matches)]
+            cantidad = filtrados.shape[0]
+            titulo = f'Solicitudes en estado: {elemento_filtrado}'
+
+    try:
+        solicitud = 'Solicitud Nro: '+str(filtrados.nro_solicitud.iloc[fila].iloc[0])
+        persona = 'Persona ID: '+str(filtrados.persona.iloc[fila].iloc[0])
+    except:
+        solicitud = 'Seleccione una solicitud'
+        persona = ''
+
+    # harcodeamos algunas columnas y reacomodamos los titulos
+    filtrados = filtrados.drop(['fecha_egreso','circuito','persona','nro_documento'],axis=1)
+    filtrados = filtrados.rename(columns = {'nro_solicitud': 'Solicitud', 'apellido': 'Apellido', 'nro_documento': 'Nro Documento',
+                                            'fecha_inicio_tramite': 'Inicio', 'certificado': 'Certificado', 'nombre_plan': 'Plan',
+                                            'circuito': 'Circuito', 'nro_expediente': 'Expediente', 'fecha_egreso': 'Fecha Egreso',
+                                            'estado_actual': 'Estado Actual', 'observaciones': 'Observaciones', 'fecha_cambio_estado': 'Ultimo Cambio',
+                                            'grupo':'Grupo'})
+    if cantidad == 1:
+        texto_cantidad = f'Se muestra {cantidad} solicitud'
+    else:
+        texto_cantidad = f'Se muestran {cantidad} solicitudes'
+    return [
+        filtrados.to_dict('records'),
+        [{"name": i, "id": i} for i in filtrados.columns],
+        solicitud,
+        persona,
+        titulo,
+        texto_cantidad
+            ]
+
+@app.callback(
+    [
+        Output('tabla-sol-elegida', 'data'),
+        Output('tabla-sol-elegida', 'columns'),
+    ],
+    [
+        Input('tabla-solicitudes', 'derived_virtual_selected_rows'),
+        Input('nro-solicitud-elegida', 'children'),
+    ],
+)
+def solicitud_seleccionada(fila,sol_selected):
+    db = pd.DataFrame()
+
+    if type(sol_selected) == str:
+        if sol_selected == 'Seleccione una solicitud':
+            sol_selected = ''
+        else:
+            sol_selected = int(sol_selected.strip('Solicitud Nro: '))
+
+    if len(str(sol_selected)) > 0:
+        db = consulta.get_estados_solicitud(solicitud=sol_selected)
+        db = db.rename(columns = {'fecha_cambio':'Fecha','estado_anterior':'Estado Anterior',
+                                                            'accion':'Accion','estado_nuevo':'Estado Nuevo',
+                                                            'observaciones':'Observaciones','auditoria_usuario':'Usuario'})
+    return [
+        db.to_dict('records'),
+        [{"name": i, "id": i} for i in db.columns],
+        ]
 
 
 @app.callback(
     [
-        dash.dependencies.Output('datos-alumno-individual', 'hidden'),
-        dash.dependencies.Output('apellido', 'children'),
+        Output('tabla-per-elegida', 'data'),
+        Output('tabla-per-elegida', 'columns'),
     ],
     [
-        dash.dependencies.Input('tabla-estados-totales', 'derived_virtual_selected_rows'),
-        dash.dependencies.Input('carrera-elegida', 'value')
-    ]
+        Input('tabla-solicitudes', 'derived_virtual_selected_rows'),
+        Input('persona-elegida', 'children'),
+    ],
 )
-def datos_personales(row_selected, carrera):
-    if type(row_selected) == list:
+def persona_seleccionada(fila, persona_elegida):
+
+    if persona_elegida == '':
         pass
     else:
-        row_selected = []
+        persona_elegida = persona_elegida.strip('Persona ID:')
 
-    if carrera==None:
-        carrera = ''
+    db = pd.DataFrame()
 
-    if carrera != '':
-        tabla = datos.loc[datos.certificado == carrera]
-    else:
-        tabla = datos.copy()
+    if len(str(persona_elegida)) > 0:
+        db = consulta.get_datos_persona(persona=persona_elegida)
+        db = db.rename(columns={'apellido':'Apellido','nombres':'Nombres','sexo':'Sexo',
+                                        'fecha_nacimiento':'Fecha de Nacimiento','nacionalidad':'Nacionalidad',
+                                        'pais_origen':'País de Origen','tipo_doc':'Tipo','nro_documento':'Nro Documento',
+                                        'pais_emisor':'País Emisor','institucion_ant':'Institución Anterior',
+                                        'titulo_ant':'Título Anterior','f_egreso_ant':'Fecha de Egreso'})
+    return [
+        db.to_dict('records'),
+        [{"name": i, "id": i} for i in db.columns],
+    ]
 
-    if len(row_selected) > 0:
-
-        tabla.reset_index(inplace=True, drop=True)
-        tram = tabla.loc[row_selected].nro_solicitud.iloc[0]
-
-        tabla = tabla.loc[tabla.nro_solicitud == tram]
-        apellido = tabla.apellido.iloc[0]
-        nombres = tabla.nombres.iloc[0]
-
-        apellido += ' '+nombres
-
-        return [False,
-                apellido
-                ]
-
-    else:
-        tabla = freedb
-        apellido = 'Sarasa'
-        return [True,
-                apellido
-                ]
-
-
-dash.dependencies.Output('docu-tipo', 'children'),
-dash.dependencies.Output('docu-numero', 'children'),
-dash.dependencies.Output('nacionalidad', 'children'),
-dash.dependencies.Output('fecha-nacimiento', 'children'),
-
-
-
-@app.callback([
-        dash.dependencies.Output('tramite-seleccionado', 'children'),
-
-        dash.dependencies.Output('docu-tipo', 'children'),
-        dash.dependencies.Output('docu-numero', 'children'),
-        dash.dependencies.Output('nacionalidad', 'children'),
-        dash.dependencies.Output('fecha-nacimiento', 'children'),
-
-        dash.dependencies.Output('div-datos-documentacion', 'hidden'),
-        dash.dependencies.Output('tabla-doc-presentada', 'data'),
-        dash.dependencies.Output('tabla-doc-presentada', 'columns'),
-
-        dash.dependencies.Output('div-tabla-cambios-estados', 'hidden'),
-        dash.dependencies.Output('tabla-estados-cambios', 'data'),
-        dash.dependencies.Output('tabla-estados-cambios', 'columns'),
+@app.callback(
+    [
+        Output('tabla-datos-sol-elegida', 'data'),
+        Output('tabla-datos-sol-elegida', 'columns'),
+        Output('solicitud-elegida-datos', 'children'),
     ],
     [
-        dash.dependencies.Input('tabla-estados-totales', 'derived_virtual_selected_rows'),
-        dash.dependencies.Input('carrera-elegida', 'value')
-    ]
+        Input('tabla-solicitudes', 'derived_virtual_selected_rows'),
+        Input('nro-solicitud-elegida', 'children'),
+    ],
 )
-def select_target(row_selected,carrera):
-    if type(row_selected) == list:
-        pass
-    else:
-        row_selected = []
+def solicitud_seleccionada_datos(fila,sol_selected):
+    db = pd.DataFrame()
+    tit = ''
 
-    if carrera==None:
-        carrera = ''
+    if type(sol_selected) == str:
+        if sol_selected == 'Seleccione una solicitud':
+            sol_selected = ''
+        else:
+            sol_selected = int(sol_selected.strip('Solicitud Nro: '))
+            tit = 'Datos ingresados en la solicitud:'
 
-    if carrera != '':
-        tabla = datos.loc[datos.certificado == carrera]
-    else:
-        tabla = datos.copy()
+    if len(str(sol_selected)) > 0:
+        db = consulta.get_datos_solicitud(solicitud=sol_selected)
 
+        db.fillna('',inplace=True)
+        db = db.rename(columns = {'id_solicitud': 'Nro Solicitud', 'fecha_inicio': 'Fecha Inicio', 'resolucion_nro': 'Nro Resolución',
+                                  'resolucion_fecha': 'Fecha Resolución', 'resolucion_untref': 'Res UNTREF',
+                                  'resolucion_rme': 'Res RME', 'coneau': 'Res CONEAU', 'registro_libro': 'Libro',
+                                  'registro_folio': 'Folio', 'registro_orden': 'Orden', 'fecha_egreso': 'Egreso',
+                                  'fecha_emision': 'Emisión Diploma', 'nro_solicitud_sidcer': 'Nro SIDCER',
+                                  'nro_diploma': 'Nro Diploma', 'fecha_finalizacion_sidcer': 'Finalización SIDCER',
+                                  'fecha_colacion': 'Fecha Colación'})
+        db['Registro'] = f'Libro: {str(db.Libro.iloc[0])}, Folio: {(db.Folio.iloc[0])}, Orden: {db.Orden.iloc[0]}'
+        db = db.drop(['Nro Solicitud','Libro','Folio','Orden'], axis=1)
 
+        db = db[['Nro Resolución', 'Fecha Resolución', 'Res UNTREF','Res RME', 'Res CONEAU', 'Registro', 'Egreso',
+                 'Emisión Diploma','Nro SIDCER', 'Nro Diploma', 'Finalización SIDCER', 'Fecha Colación']]
 
-    if len(row_selected) > 0:
-        tabla.reset_index(inplace=True, drop=True)
-        tram = tabla.loc[row_selected].nro_solicitud.iloc[0]
+        db = db.T
+        db.reset_index(inplace=True)
+        db.columns = ['Dato','Valor']
 
-        # para la tabla de documentación
-        docu = tabla.loc[tabla.nro_solicitud == tram][documentacion].T
-        docu.columns = ['presento']
-        docu.loc[docu.presento == True, 'presento'] = 'Si'
-        docu.loc[docu.presento == False, 'presento'] = 'No'
-        docu.reset_index(inplace=True)
-        docu.columns = ['', 'presento']
-        docu[''] = docu[''].map(docu_dic)
-        tabla_docu = docu.copy()
+        #print({i: i for i in datos_solicitud.columns})
 
-        # Datos sueltos
-        docu_tipo = tabla.desc_tipo_documento.iloc[0]
-        docu_numero = tabla.nro_documento.iloc[0]
-        nacionalidad = nacion_dic[tabla.pais_origen.iloc[0]]
-        fecha_nacimiento = tabla.fecha_nacimiento.iloc[0]
+    return [
+        db.to_dict('records'),
+        [{"name": i, "id": i} for i in db.columns],
+        tit
+        ]
 
-        # para la tabla de estados
-        tabla = estados.copy()
-        tabla = tabla.loc[tabla.nro_solicitud == tram]
+@app.callback(
+    [
+        Output('tabla-datos-sol-documentacion', 'data'),
+        Output('tabla-datos-sol-documentacion', 'columns'),
+        Output('solicitud-elegida-documentacion', 'children'),
+    ],
+    [
+        Input('tabla-solicitudes', 'derived_virtual_selected_rows'),
+        Input('nro-solicitud-elegida', 'children'),
+    ],
+)
+def solicitud_seleccionada_documentacion(fila,sol_selected):
+    db = pd.DataFrame()
+    tit = ''
 
-        tabla_estados = tabla.drop(['nro_solicitud','estado_anterior'], axis=1)  #
+    if type(sol_selected) == str:
+        if sol_selected == 'Seleccione una solicitud':
+            sol_selected = ''
+        else:
+            sol_selected = int(sol_selected.strip('Solicitud Nro: '))
+            tit = 'Documentación presentada:'
 
+    if len(str(sol_selected)) > 0:
+        db = consulta.get_datos_documentacion(solicitud=sol_selected)
+        db = db.drop(['grupo'], axis=1)
+        db = db.rename(columns = {'grupo': 'Grupo', 'solicitud_alumno': 'Solicitud del Alumno',
+                                  'libre_deuda': 'Libre Deuda', 'tesis_cd': 'CD Tesis-TFI',
+                                  'titulo_previo': 'Título Previo', 'documento': 'Documento Identidad',
+                                  'car': 'C.A.R.', 'nota_dir': 'Nota Director', 'acta_final': 'Acta Final',
+                                  'actas_totales': 'Totalidad de Actas'})
 
+        db = db.T
+        db.reset_index(inplace=True)
+        db.columns = ['Documentación','Presentada']
 
-        return [tram,
-                docu_tipo,
-                docu_numero,
-                nacionalidad,
-                fecha_nacimiento,
-                False,  # visibilidad del div de la tabla
-                tabla_docu.to_dict('records'),
-                [{"name": dic_estados_columns[i], "id": i} for i in tabla_docu.columns],
-                False,  # visibilidad del div de la tabla
-                tabla_estados.to_dict('records'),
-                [{"name": dic_estados_columns[i], "id": i} for i in tabla_estados.columns],
-                ]
+        #print({i: i for i in db.columns})
 
-    else:
-        tabla = freedb
-        tram = ''
-        docu_tipo = ''
-        docu_numero = ''
-        nacionalidad = ''
-        fecha_nacimiento = ''
-        return [tram,
-                docu_tipo,
-                docu_numero,
-                nacionalidad,
-                fecha_nacimiento,
-                True,  # visibilidad del div de la tabla
-                tabla.to_dict('records'),
-                [{"name": i, "id": i} for i in tabla.columns],
-                True,  # visibilidad del div de la tabla
-                tabla.to_dict('records'),
-                [{"name": dic_estados_columns[i], "id": i} for i in tabla.columns],
-                ]
+    return [
+        db.to_dict('records'),
+        [{"name": i, "id": i} for i in db.columns],
+        tit
+        ]
+
 
 
 ################################ CALL BACKS ##################################

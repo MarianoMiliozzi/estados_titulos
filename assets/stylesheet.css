@@ -1,49 +1,25 @@
+.red{
+    background-color: #ffffaf;
+}
+
 .cuerpo{
     padding-left:5%;
     padding-right:5%;
 }
 
-.carrera{
-    float: left;
-    right: 10px;
-    padding: 10px;
-    background-color: gray;
-    border-radius: 5px;
-    box-shadow: darkblue;
-    font-weight: bolder;
-    color :white;
+.datos{
+     background-color:#BBBBBB;
+     padding: 5px;
+     margin: 5%;
+     height: 100%,
 }
 
-.sigla{
-    position: bottom;
-    float: left;
-    right: 10px;
-    padding: 10px;
-    color:darkblue;
-    /*background-color: gray;*/
-    border-radius: 5px;
-    box-shadow: darkblue;
-    font-weight: bold;
-    font-size: 20px;
+.cajasdatos{
+    background-color:#BBBBBB;
+    margin-top: 10px;
+    padding: 5px;
 }
 
-.niveles{
-        margin-left: 00px;
-}
-
-.linea{
-        margin-bottom: 10px;
-        margin-top: 10px;
-}
-.span-mio{
-    font-size: 18px;
-    padding-left:20px;
-    display:block;
-}
-
-.dsa{
-    border-radius: 5px;
-}
 
 .texto_intro{
     color: #555555;

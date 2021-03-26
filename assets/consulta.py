@@ -1,235 +1,147 @@
-import numpy as np; import pandas as pd; import time; import datetime
-import psycopg2, psycopg2.extras; import os; from collections import defaultdict
+import psycopg2
+import pandas as pd
+import assets.data_db as data
 
-dic_operaciones = {'I': 'Insert', 'U': 'Update', 'D': 'Delete'}
+def get_columns(desc):
+    cols = []
+    for i in desc:
+        cols.append(i[0])
+    return cols
 
-#
-#
-# # Esta celda permite obtener toda la tabla que sea seleccionada (el orden de las columnas varía desde la db hacia aqui)
-# # elegimos el origen
-# data_db = 'guarani3162posgrado'
-# data_db = 'guarani3162posgradoprueba'
-#
-# # nos conectamos a la base seleccionada en data
-# conn = psycopg2.connect(database=data_db, user='postgres', password='uNTreF2019!!', host='170.210.45.210')
-# cur = conn.cursor()
-#
-# cur.execute(
-#     '''SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA in ('negocio','negocio_pers') ''')
-# tablas = pd.DataFrame(cur.fetchall())
-# conn.close()
-#
-#
-# def get_table(esquema, tabla_objetivo, columns, where):
-#     ''' toma como parametros: esquema, tabla_objetivo, columns, where
-#     esquema y tabla_objetivo son variables definidas, y columns es una lista de columnas filtrada de tablas[0]
-#     siempre se trabajará con la base de datos declarada en data_db al inicio de esta notebook.
-#     '''
-#     global output_df
-#     conn = psycopg2.connect(database=data_db, user='postgres', password='uNTreF2019!!', host='170.210.45.210')
-#     cur = conn.cursor()
-#
-#     if where == '':
-#         if columns == '*':
-#             cur.execute('SELECT {} FROM {}.{}'.format(columns, esquema, tabla_objetivo))
-#             output_df = pd.DataFrame(cur.fetchall(), columns=list(
-#                 tablas.loc[(tablas[0] == esquema) & (tablas[1] == tabla_objetivo)][2]))
-#         else:
-#             cur.execute('SELECT {} FROM {}.{}'.format(', '.join(columns), esquema, tabla_objetivo))
-#             output_df = pd.DataFrame(cur.fetchall(), columns=columns)
-#
-#     else:
-#         if columns == '*':
-#             cur.execute('SELECT {} FROM {}.{} WHERE {}'.format(columns, esquema, tabla_objetivo, where))
-#             output_df = pd.DataFrame(cur.fetchall(), columns=list(
-#                 tablas.loc[(tablas[0] == esquema) & (tablas[1] == tabla_objetivo)][2]))
-#
-#         else:
-#             cur.execute('SELECT {} FROM {}.{} WHERE {}'.format(', '.join(columns), esquema, tabla_objetivo, where))
-#             output_df = pd.DataFrame(cur.fetchall(), columns=columns)
-#
-#     # cerrar siempre la conexion por las dudas...
-#     conn.close()
-#     return output_df.tail(3)
-#
-#
-# # primero vemos los certificados del circuito de egreso nuevo
-#
-# extraemos = ['nro_solicitud', 'certificado', 'alumno', 'plan_version', 'fecha_alta',
-#              'fecha_inicio_tramite', 'nro_expediente', 'fecha_egreso',
-#              'fecha_cambio_estado', 'estado', 'resolucion_rectorado', 'interfaz']
-#
-# get_table('negocio', 'sga_certificados_otorg', extraemos, 'circuito = 1003')
-# tramites = output_df.copy()
-#
-# tramites.head(3)
-#
-# # obtengo las solicitudes que corren con el circuito de egreso nuestro
-# nro_tramites = list(tramites.nro_solicitud)
-# # convierto todo a string para poder joinear
-# nro_tramites = [str(i) for i in nro_tramites]
-# # genero una cadena de texto apta para el SQL
-# nro_tramites = '(' + ','.join(nro_tramites) + ')'
-#
-# # extraigo los cambios de estados de los nros de solicitud brindados
-# get_table('negocio', 'sga_certificados_otorg_cmb',
-#           ['nro_solicitud', 'fecha', 'estado_anterior', 'accion', 'estado_nuevo', 'observaciones'],
-#           "nro_solicitud in {}".format(nro_tramites))
-# cambios = output_df.copy()
-#
-# # corrijo el formato de fecha
-# cambios.fecha = [cambios.fecha.iloc[i].date() for i in range(len(cambios))]
-#
-# # necesitamos traducir las acciones y estados en palabras
-# get_table('negocio', 'mce_acciones', ['accion', 'nombre'], "activo = 'S'")
-# dic_acciones = {output_df.accion.iloc[i]: output_df.nombre.iloc[i] for i in range(len(output_df))}
-# cambios.accion = cambios.accion.map(dic_acciones)
-#
-# # para los estados
-# get_table('negocio', 'mce_estados', ['estado', 'nombre'], "activo = 'S'")
-#
-# dic_estados = {output_df.estado.iloc[i]: output_df.nombre.iloc[i] for i in range(len(output_df))}
-#
-# dic_estados.update({0: "00. Inicio del Trámite - Inicio"})
-#
-# cambios.estado_anterior.fillna(0, inplace=True)
-# cambios.estado_nuevo.fillna(0, inplace=True)
-#
-# cambios.estado_anterior = cambios.estado_anterior.map(dic_estados)
-# cambios.estado_nuevo = cambios.estado_nuevo.map(dic_estados)
-#
-# # temporalmente lockeamos en mi trámite modelo
-# # cambios = cambios.loc[cambios.nro_solicitud == 1647]
-#
-# cambios.reset_index(inplace=True, drop=True)
-#
-# cambios
-#
-# # mergeamos tramites y estados
-#
-# tramites = tramites.merge(cambios)
-#
-# # obtenemos mas datos para mapear
-#
-# # obtengo las solicitudes que corren con el circuito de egreso nuestro
-# cert_a_buscar = list(tramites.certificado.unique())
-# # convierto todo a string para poder joinear
-# cert_a_buscar = [str(i) for i in cert_a_buscar]
-# # genero una cadena de texto apta para el SQL
-# cert_a_buscar = '(' + ','.join(cert_a_buscar) + ')'
-#
-# get_table('negocio', 'sga_certificados', ['certificado', 'nombre', 'certificado_tipo'],
-#           'certificado in {}'.format(cert_a_buscar))
-# cert_ext = output_df.copy()
-#
-# cert_ext
-#
-# # mapeamos el db de certificados para obtener los nombres
-# tramites.certificado = tramites.certificado.map(lambda x: cert_ext.loc[cert_ext.certificado == x].nombre.iloc[0])
-#
-# ### traemos la persona con el dato de alumno
-#
-# tramites.head(1)
-#
-# # obtengo las solicitudes que corren con el circuito de egreso nuestro
-# alum_a_buscar = list(tramites.alumno.unique())
-# # convierto todo a string para poder joinear
-# alum_a_buscar = [str(i) for i in alum_a_buscar]
-# # genero una cadena de texto apta para el SQL
-# alum_a_buscar = '(' + ','.join(alum_a_buscar) + ')'
-#
-# get_table('negocio', 'sga_alumnos', ['alumno', 'persona'], 'alumno in {}'.format(alum_a_buscar))
-# alumnos = output_df.copy()
-#
-# # mapeamos del dato alumno al dato persona
-# tramites.alumno = tramites.alumno.map(lambda x: alumnos.loc[alumnos.alumno == x].persona.iloc[0])
-#
-# ### traemos los datos de la persona
-#
-# # obtengo las solicitudes que corren con el circuito de egreso nuestro
-# alum_a_buscar = list(tramites.alumno.unique())
-# # convierto todo a string para poder joinear
-# alum_a_buscar = [str(i) for i in alum_a_buscar]
-# # genero una cadena de texto apta para el SQL
-# alum_a_buscar = '(' + ','.join(alum_a_buscar) + ')'
-#
-# get_table('negocio', 'vw_personas',
-#           ['persona', 'apellido', 'nombres', 'sexo',
-#            'desc_tipo_documento', 'nro_documento'],
-#           'persona in {}'.format(alum_a_buscar))
-# personas = output_df.copy()
-#
-#
-# get_table('negocio', 'mdp_personas',
-#           ['persona', 'fecha_nacimiento', 'pais_origen'],
-#           'persona in {}'.format(alum_a_buscar))
-# personas = personas.merge(output_df)
-#
-#
-#
-#
-# # mergeamos los tramites con los datos del alumno
-# tramites = tramites.merge(personas, left_on='alumno', right_on='persona')
-#
-# # de aca obtenemos los campos nuevos
-# get_table('negocio_pers', 'sga_certificados_otorg_pers', '*', '')
-#
-# pers_cols = ['id_solicitud', 'fecha_inicio', 'solicitud_alumno', 'libre_deuda', 'tesis_tfi_cd', 'titulo_grado',
-#              'documento_identidad', 'constancia_actividades_aprobadas', 'nota_director', 'acta_final',
-#              'totalidad_actas',
-#              'expte_nro', 'resolucion_nro', 'resolucion_fecha', 'resolucion_untref', 'resolucion_rme', 'coneau',
-#              'registro_libro', 'registro_folio', 'registro_orden', 'fecha_egreso_personalizado', 'fecha_emision',
-#              'nro_solicitud_sidcer', 'nro_diploma', 'fecha_finalizacion_sidcer', 'fecha_colacion', 'grupo']
-#
-# output_df.columns = pers_cols
-# campos_pers = output_df.copy()
-#
-# campos_pers
-#
-# tramites = tramites.merge(campos_pers, left_on='nro_solicitud', right_on='id_solicitud')
-#
-# estados_detalle = tramites[
-#     ['nro_solicitud', 'fecha_cambio_estado', 'estado_anterior', 'accion', 'estado_nuevo', 'observaciones']]
-# estados_detalle
-#
-# datos_unicos = tramites[[
-#
-#     # datos de la solicitud de certificado
-#     'grupo', 'nro_solicitud', 'certificado', 'plan_version', 'fecha_alta', 'fecha_inicio_tramite', 'estado', 'interfaz',
-#
-#     # HISTORIA ACADEMICA
-#     'fecha_egreso',
-#     'fecha_egreso_personalizado','certificado',
-#
-#     # DATOS DE LA PERSONA
-#     'apellido', 'nombres', 'sexo', 'desc_tipo_documento', 'nro_documento','fecha_nacimiento', 'pais_origen',
-#
-#     # DOCUMENTACION PRESENTADA
-#     'solicitud_alumno', 'libre_deuda', 'tesis_tfi_cd', 'titulo_grado', 'documento_identidad',
-#     'constancia_actividades_aprobadas', 'nota_director', 'acta_final', 'totalidad_actas',
-#
-#     # DATOS ADMINISTRATIVOS
-#     'expte_nro', 'resolucion_nro', 'resolucion_fecha', 'resolucion_untref', 'resolucion_rme', 'coneau',
-#     'registro_libro', 'registro_folio', 'registro_orden',
-#
-#     # DATOS DE LOS DOCUMENTOS
-#     # 'fecha_emision','nro_solicitud_sidcer', 'nro_diploma',
-#
-#     # DATOS DE FINALIZACION
-#     # 'fecha_finalizacion_sidcer','fecha_colacion'
-#
-# ]].drop_duplicates()
-#
-#
-# estados_detalle.to_csv('estados_detalle.csv', sep='|')
-# datos_unicos.to_csv('datos_unicos.csv', sep='|')
+def parse_date(date):
+    return date.strftime('%m/%d/%Y')
+
+def get_solicitudes_activas():
+    # obtenemos un listado de certificados únicos que no estén en el último estado
+    conn = psycopg2.connect(database=data.data_db, user=data.user, password=data.password, host=data.host)
+    cur = conn.cursor()
+    cur.execute(f'''SELECT CERT_O.certificado as id_, CERT.nombre as certificado, CERT_O.nro_solicitud as sol_id, 
+                    CERT_O.persona, ESTA.nombre as estado, PERS.grupo
+                    FROM negocio.sga_certificados_otorg CERT_O
+                        LEFT JOIN negocio.sga_certificados CERT ON CERT_O.certificado = CERT.certificado
+                        LEFT JOIN negocio.mce_estados ESTA ON CERT_O.estado = ESTA.estado
+                        LEFT JOIN negocio_pers.sga_certificados_otorg_pers PERS ON CERT_O.nro_solicitud = PERS.id_solicitud
+                    WHERE CERT_O.estado != 1013 ''')
+    cols = get_columns(cur.description)
+    certif = pd.DataFrame(cur.fetchall(), columns=cols)
+    conn.close()
+    return certif
 
 
-estados_detalle = pd.read_csv('estados_detalle.csv',sep='|',index_col=[0])
-datos_unicos = pd.read_csv('datos_unicos.csv',sep='|',index_col=[0])
 
-def consulta_estados():
-    return estados_detalle
+def get_solicitudes_filtradas(nros_solicitud=[]):
+    conn = psycopg2.connect(database=data.data_db, user=data.user, password=data.password, host=data.host)
+    cur = conn.cursor()
+    cur.execute(f'''SELECT CERT_O.nro_solicitud, PERS.grupo, PER.apellido, DOC.nro_documento, CERT_O.fecha_inicio_tramite,
+                           CERT.nombre as certificado, 
+                           CONCAT(PLAN.nombre,' • ',PLAN.version) as nombre_plan,
+                           REPLACE(CIR.nombre,'Solicitud de Título de Posgrado','Titulación') as circuito,
+                           CERT_O.nro_expediente,
+                           CERT_O.fecha_egreso, EST.nombre as estado_actual,
+                           CERT_O.fecha_cambio_estado, PER.persona
 
-def datos_uni():
-    return datos_unicos
+                    FROM negocio.sga_certificados_otorg CERT_O
+                        LEFT JOIN negocio.sga_certificados CERT ON CERT_O.certificado = CERT.certificado
+                        LEFT JOIN negocio.mdp_personas PER ON CERT_O.persona = PER.persona
+                        LEFT JOIN negocio.sga_planes_versiones PLAN ON CERT_O.plan_version = PLAN.plan_version
+                        LEFT JOIN negocio.mce_circuitos CIR ON CERT_O.circuito = CIR.circuito
+                        LEFT JOIN negocio.mce_estados EST ON CERT_O.estado = EST.estado
+                        LEFT JOIN negocio.mdp_personas_documentos DOC ON PER.documento_principal = DOC.documento
+                        LEFT JOIN negocio_pers.sga_certificados_otorg_pers PERS ON CERT_O.nro_solicitud = PERS.id_solicitud
+
+                    WHERE CERT_O.nro_solicitud IN ({str(nros_solicitud)[1:-1]})
+                    ''')
+    cols = get_columns(cur.description)
+    filtro_certificado = pd.DataFrame(cur.fetchall(), columns=cols)
+    conn.close()
+
+    filtro_certificado['fecha_inicio_tramite'] = filtro_certificado.fecha_inicio_tramite.map(parse_date)
+    filtro_certificado['fecha_cambio_estado'] = filtro_certificado.fecha_cambio_estado.map(parse_date)
+
+
+    return filtro_certificado
+
+def get_datos_persona(persona=int):
+    conn = psycopg2.connect(database=data.data_db, user=data.user, password=data.password, host=data.host)
+    cur = conn.cursor()
+    cur.execute(f'''SELECT PER.apellido, PER.nombres, PER.sexo, PER.fecha_nacimiento, NAC.descripcion as nacionalidad,
+                           PAIS1.nombre as pais_origen,
+                           TIPODOC.desc_abreviada as tipo_doc, DOC.nro_documento, PAIS2.nombre as pais_emisor,
+                           EST.institucion_otra as institucion_ant, EST.titulo_otro as titulo_ant, EST.fecha_egreso as f_egreso_ant
+                    FROM negocio.mdp_personas PER
+                        LEFT JOIN negocio.mdp_nacionalidades NAC ON PER.nacionalidad = NAC.nacionalidad
+                        LEFT JOIN negocio.mug_paises PAIS1 ON PER.pais_origen = PAIS1.pais
+                        LEFT JOIN negocio.mdp_personas_documentos DOC ON PER.documento_principal = DOC.documento
+                        LEFT JOIN negocio.mdp_tipo_documento TIPODOC ON DOC.tipo_documento = TIPODOC.tipo_documento
+                        LEFT JOIN negocio.mug_paises PAIS2 ON DOC.pais_documento = PAIS2.pais
+                        LEFT JOIN negocio.mdp_datos_estudios EST ON PER.persona = EST.persona AND EST.nivel_estudio = 5
+                    WHERE PER.persona = {persona} ''')
+
+    cols = get_columns(cur.description)
+
+    datos_persona = pd.DataFrame(cur.fetchall(), columns=cols)
+    conn.close()
+    return datos_persona
+
+def get_estados_solicitud(solicitud =int):
+    conn = psycopg2.connect(database=data.data_db, user=data.user, password=data.password, host=data.host)
+    cur = conn.cursor()
+    cur.execute(f'''
+                    SELECT CAMBIO.fecha as fecha_cambio, 
+                           ESTA.nombre as estado_anterior, ACCION.nombre as accion ,ESTN.nombre as estado_nuevo,
+                           CAMBIO.observaciones, PER.apellido as auditoria_usuario
+                    FROM   negocio.sga_certificados_otorg_cmb CAMBIO
+                        LEFT JOIN negocio.mce_estados ESTA ON CAMBIO.estado_anterior = ESTA.estado
+                        LEFT JOIN negocio.mce_acciones ACCION ON CAMBIO.accion = ACCION.accion
+                        LEFT JOIN negocio.mce_estados ESTN ON CAMBIO.estado_nuevo = ESTN.estado
+                        LEFT JOIN negocio_auditoria.logs_sga_certificados_otorg_cmb AUDIT ON CAMBIO.cambio_estado = AUDIT.cambio_estado
+                        LEFT JOIN negocio.mdp_personas PER ON AUDIT.auditoria_usuario = PER.usuario
+                    WHERE CAMBIO.nro_solicitud = {solicitud}
+                    ''')
+    cols = get_columns(cur.description)
+    detalle_solicitud = pd.DataFrame(cur.fetchall(), columns=cols)
+
+    detalle_solicitud['fecha_cambio'] = detalle_solicitud.fecha_cambio.map(parse_date)
+    conn.close()
+    return detalle_solicitud
+
+def get_datos_solicitud(solicitud=int):
+    conn = psycopg2.connect(database=data.data_db, user=data.user, password=data.password, host=data.host)
+    cur = conn.cursor()
+    cur.execute(f'''
+                    SELECT id_solicitud, fecha_inicio, resolucion_nro, resolucion_fecha, resolucion_untref,
+                           resolucion_rme, coneau, registro_libro, registro_folio, registro_orden,
+                           fecha_egreso_personalizado as fecha_egreso, fecha_emision, nro_solicitud_sidcer,
+                            nro_diploma, fecha_finalizacion_sidcer, fecha_colacion
+                    FROM   negocio_pers.sga_certificados_otorg_pers
+                    WHERE id_solicitud = {solicitud}
+                    ''')
+    cols = get_columns(cur.description)
+    datos_sol = pd.DataFrame(cur.fetchall(),columns=cols)
+    conn.close()
+
+    return datos_sol
+
+
+def get_datos_documentacion(solicitud=int):
+    conn = psycopg2.connect(database=data.data_db, user=data.user, password=data.password, host=data.host)
+    cur = conn.cursor()
+    cur.execute(f'''
+                    SELECT grupo,
+                           CASE solicitud_alumno WHEN True THEN 'SI' ELSE 'NO' END as solicitud_alumno,
+                           CASE libre_deuda WHEN True THEN 'SI' ELSE 'NO' END as libre_deuda,
+                           CASE tesis_tfi_cd WHEN True THEN 'SI' ELSE 'NO' END as tesis_cd,
+                           CASE titulo_grado WHEN True THEN 'SI' ELSE 'NO' END as titulo_previo,
+                           CASE documento_identidad WHEN True THEN 'SI' ELSE 'NO' END as documento,
+                           CASE constancia_actividades_aprobadas WHEN True THEN 'SI' ELSE 'NO' END as car,
+                           CASE nota_director WHEN True THEN 'SI' ELSE 'NO' END as nota_dir,
+                           CASE acta_final WHEN True THEN 'SI' ELSE 'NO' END as acta_final,
+                           CASE totalidad_actas WHEN True THEN 'SI' ELSE 'NO' END as actas_totales
+                    FROM   negocio_pers.sga_certificados_otorg_pers
+                    WHERE id_solicitud = {solicitud}
+                    ''')
+    cols = get_columns(cur.description)
+    documentacion = pd.DataFrame(cur.fetchall(),columns=cols)
+    conn.close()
+
+    return documentacion
