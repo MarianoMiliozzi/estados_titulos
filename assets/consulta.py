@@ -9,21 +9,37 @@ def get_columns(desc):
     return cols
 
 def parse_date(date):
-    return date.strftime('%m/%d/%Y')
+    try:
+        return date.strftime('%d/%m/%Y')
+    except:
+        return date
 
 def get_solicitudes_activas():
     # obtenemos un listado de certificados únicos que no estén en el último estado
     conn = psycopg2.connect(database=data.data_db, user=data.user, password=data.password, host=data.host)
     cur = conn.cursor()
-    cur.execute(f'''SELECT CERT_O.certificado as id_, CERT.nombre as certificado, CERT_O.nro_solicitud as sol_id, 
-                    CERT_O.persona, ESTA.nombre as estado, PERS.grupo
-                    FROM negocio.sga_certificados_otorg CERT_O
-                        LEFT JOIN negocio.sga_certificados CERT ON CERT_O.certificado = CERT.certificado
-                        LEFT JOIN negocio.mce_estados ESTA ON CERT_O.estado = ESTA.estado
-                        LEFT JOIN negocio_pers.sga_certificados_otorg_pers PERS ON CERT_O.nro_solicitud = PERS.id_solicitud
-                    WHERE CERT_O.estado != 1013 ''')
+    cur.execute(f'''SELECT * from (
+                        SELECT CERT_O.certificado as id_, CERT.nombre as certificado, CERT_O.nro_solicitud as sol_id,
+                               CERT_O.persona, ESTA.nombre as estado, PERS.grupo,
+                               CASE CERT_O.estado WHEN 1013 THEN 'Final' ELSE 'Activo' END as con_estado
+
+                        FROM negocio.sga_certificados_otorg CERT_O
+                            LEFT JOIN negocio.sga_certificados CERT
+                                ON CERT_O.certificado = CERT.certificado
+                            LEFT JOIN negocio.mce_estados ESTA 
+                                ON CERT_O.estado = ESTA.estado
+                            LEFT JOIN negocio_pers.sga_certificados_otorg_pers PERS 
+                                ON CERT_O.nro_solicitud = PERS.id_solicitud) as "my_table"
+                    WHERE con_estado = 'Activo' ''')
     cols = get_columns(cur.description)
     certif = pd.DataFrame(cur.fetchall(), columns=cols)
+    certif = certif.drop('con_estado',axis=1)
+
+    certif.estado.fillna('00. Coordinación - Armado de Solicitud',inplace=True)
+
+    certif.grupo.fillna('Indeterminado',inplace=True)
+
+
     conn.close()
     return certif
 
@@ -76,10 +92,10 @@ def get_datos_persona(persona=int):
                         LEFT JOIN negocio.mug_paises PAIS2 ON DOC.pais_documento = PAIS2.pais
                         LEFT JOIN negocio.mdp_datos_estudios EST ON PER.persona = EST.persona AND EST.nivel_estudio = 5
                     WHERE PER.persona = {persona} ''')
-
     cols = get_columns(cur.description)
-
     datos_persona = pd.DataFrame(cur.fetchall(), columns=cols)
+    datos_persona['fecha_nacimiento'] = datos_persona.fecha_nacimiento.map(parse_date)
+    datos_persona['f_egreso_ant'] = datos_persona.f_egreso_ant.map(parse_date)
     conn.close()
     return datos_persona
 
@@ -100,7 +116,11 @@ def get_estados_solicitud(solicitud =int):
                     ''')
     cols = get_columns(cur.description)
     detalle_solicitud = pd.DataFrame(cur.fetchall(), columns=cols)
-
+    detalle_solicitud = detalle_solicitud.sort_values(by='fecha_cambio')
+    detalle_solicitud['hora'] = [str(detalle_solicitud.fecha_cambio.iloc[i].hour)+':'+ str(detalle_solicitud.fecha_cambio.iloc[i].minute)
+                                 if len(str(detalle_solicitud.fecha_cambio.iloc[i].minute)) == 2
+                                 else str(detalle_solicitud.fecha_cambio.iloc[i].hour)+':'+'0'+str(detalle_solicitud.fecha_cambio.iloc[i].minute)
+                                 for i in range(len(detalle_solicitud))]
     detalle_solicitud['fecha_cambio'] = detalle_solicitud.fecha_cambio.map(parse_date)
     conn.close()
     return detalle_solicitud

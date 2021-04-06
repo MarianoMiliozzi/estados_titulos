@@ -247,17 +247,18 @@ def set_solicitudes_table(filtro_elegido,elemento_filtrado,fila):
     totales = consulta.get_solicitudes_filtradas(nros_solicitud=list(activos.sol_id.unique()))
     totales.grupo.fillna('Indeterminado',inplace=True)
 
+
     if elemento_filtrado == None:
         filtrados = totales.copy()
         cantidad = filtrados.shape[0]
         titulo = 'Solicitudes totales'
     else:
+        matches = []
         if filtro_elegido == 'Certificado':
             filtrados = totales.loc[totales.certificado == elemento_filtrado]
             cantidad = filtrados.shape[0]
             titulo = f'Solicitudes de {elemento_filtrado}'
         elif filtro_elegido == 'Grupo':
-            matches = []
             for i in totales.grupo:
                 if str(elemento_filtrado) in str(i):
                     matches.append(i)
@@ -265,7 +266,6 @@ def set_solicitudes_table(filtro_elegido,elemento_filtrado,fila):
             cantidad = filtrados.shape[0]
             titulo = f'Solicitudes del grupo: {elemento_filtrado}'
         elif filtro_elegido == 'Solicitud':
-            matches = []
             for i in totales.nro_solicitud:
                 if str(elemento_filtrado) in str(i):
                     matches.append(i)
@@ -273,7 +273,6 @@ def set_solicitudes_table(filtro_elegido,elemento_filtrado,fila):
             cantidad = filtrados.shape[0]
             titulo = f'Solicitud {elemento_filtrado}'
         elif filtro_elegido == 'Estado':
-            matches = []
             for i in totales.estado_actual:
                 if str(elemento_filtrado) in str(i):
                     matches.append(i)
@@ -329,9 +328,15 @@ def solicitud_seleccionada(fila,sol_selected):
 
     if len(str(sol_selected)) > 0:
         db = consulta.get_estados_solicitud(solicitud=sol_selected)
-        db = db.rename(columns = {'fecha_cambio':'Fecha','estado_anterior':'Estado Anterior',
-                                                            'accion':'Accion','estado_nuevo':'Estado Nuevo',
-                                                            'observaciones':'Observaciones','auditoria_usuario':'Usuario'})
+        db = db[['fecha_cambio', 'hora', 'estado_anterior', 'accion', 'estado_nuevo','observaciones', 'auditoria_usuario']]
+        db = db.rename(columns = {'fecha_cambio':'Fecha','estado_anterior':'Estado Anterior','accion':'Accion',
+                                  'estado_nuevo':'Estado Nuevo','observaciones':'Observaciones',
+                                  'auditoria_usuario':'Usuario','hora':'Hora'})
+
+        if len(db) == 0:
+            db = pd.concat([db, pd.DataFrame([[]])])
+            db.fillna('sin cargar', inplace=True)
+
     return [
         db.to_dict('records'),
         [{"name": i, "id": i} for i in db.columns],
@@ -402,7 +407,11 @@ def solicitud_seleccionada_datos(fila,sol_selected):
                                   'fecha_emision': 'Emisión Diploma', 'nro_solicitud_sidcer': 'Nro SIDCER',
                                   'nro_diploma': 'Nro Diploma', 'fecha_finalizacion_sidcer': 'Finalización SIDCER',
                                   'fecha_colacion': 'Fecha Colación'})
-        db['Registro'] = f'Libro: {str(db.Libro.iloc[0])}, Folio: {(db.Folio.iloc[0])}, Orden: {db.Orden.iloc[0]}'
+        try:
+            db['Registro'] = f'Libro: {str(db.Libro.iloc[0])}, Folio: {(db.Folio.iloc[0])}, Orden: {db.Orden.iloc[0]}'
+        except:
+            db['Registro'] = ''
+
         db = db.drop(['Nro Solicitud','Libro','Folio','Orden'], axis=1)
 
         db = db[['Nro Resolución', 'Fecha Resolución', 'Res UNTREF','Res RME', 'Res CONEAU', 'Registro', 'Egreso',
@@ -410,9 +419,12 @@ def solicitud_seleccionada_datos(fila,sol_selected):
 
         db = db.T
         db.reset_index(inplace=True)
-        db.columns = ['Dato','Valor']
+        try:
+            db.columns = ['Dato','Valor']
+        except:
+            db.columns = ['Dato']
+            db['Valor'] = 'sin cargar'
 
-        #print({i: i for i in datos_solicitud.columns})
 
     return [
         db.to_dict('records'),
@@ -453,9 +465,12 @@ def solicitud_seleccionada_documentacion(fila,sol_selected):
 
         db = db.T
         db.reset_index(inplace=True)
-        db.columns = ['Documentación','Presentada']
+        try:
+            db.columns = ['Documentación','Presentada']
+        except:
+            db.columns = ['Documentación']
+            db['Presentada'] = 'sin cargar'
 
-        #print({i: i for i in db.columns})
 
     return [
         db.to_dict('records'),
