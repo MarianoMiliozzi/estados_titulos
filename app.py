@@ -1,31 +1,26 @@
 import pandas as pd
 import assets.consulta as consulta
-from assets.OOP import Persona, get_persona_from_legajo, Alumno
+from assets.consulta import get_personas_legajos
+from assets.OOP import Alumno
 import urllib ; import urllib.parse
 import dash
 import dash_core_components as dcc
 import dash_html_components as html
-from dash.dependencies import Output, Input, State, MATCH, ALL
+from dash.dependencies import Output, Input, State, ALL
 import dash_table
 
 activos = consulta.get_solicitudes_activas()
 activos.grupo.fillna('Indeterminado', inplace=True)
-
-activos_dic = {activos.id_.iloc[i]: (activos.certificado.iloc[i],
-                                     list(activos.loc[
-                                              activos.certificado == activos.certificado.iloc[i]].sol_id.unique()),
-                                     list(activos.loc[
-                                              activos.certificado == activos.certificado.iloc[i]].persona.unique())) for
-               i in range(len(activos))}
 
 opciones_filtrado = {'Certificado': 'certificado',
                      'Grupo': 'grupo',
                      'Estado': 'estado_actual',
                      'Solicitud': 'nro_solicitud'}
 
-persona_to_legajo = get_persona_from_legajo()
+persona_to_legajo = get_personas_legajos(activos.persona)
 persona_to_legajo = pd.concat([persona_to_legajo, pd.DataFrame([[0, 0]], columns=persona_to_legajo.columns)])
 persona_to_legajo.reset_index(inplace=True, drop=True)
+persona_to_legajo['legajo'] = persona_to_legajo.legajo.astype(int)
 
 # ------------------------------------------------------------------------
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
@@ -72,7 +67,7 @@ page_1_layout = html.Div([
     html.H5('Extraccion de datos'),
 
     # cantidad de alumnos
-    html.Label('Seleccione la cantidad de alumnos a consultar'),
+    html.Label('Ingrese un número de Legajo. Para realizar varias consultas oprima AGREGAR.'),
     html.Br(),
 
     html.Div(style={'margin-bottom': '-20px', 'margin-top': '-20px'}, children=[html.Hr()]),
@@ -130,7 +125,6 @@ page_1_layout = html.Div([
     [Input('page-1-dropdown', 'value')])
 def page_1_datos(value):
     return
-
 
 page_2_layout = html.Div([
 
@@ -296,13 +290,11 @@ page_2_layout = html.Div([
 
 ])
 
-
 @app.callback(
     Output('page-2-content', 'children'),
     [Input('page-2-radios', 'value')])
 def page_2_estados(value):
     return
-
 
 # Update the index
 @app.callback(
@@ -337,15 +329,12 @@ def set_cantidad_alumnos(n_clicks, children):
 
     return children
 
-
 @app.callback(
     [Output('dropdown-container-output', 'children'),
      Output('download-link', 'href')],
     Input({'type': 'filter-dropdown', 'index': ALL}, 'value')
 )
 def display_output(legajos):
-
-
     cols = ['tipo_doc', 'nro_documento', 'apellido', 'nombres', 'sexo', 'fecha_nacimiento', 'nacionalidad',
             'pais_origen',
             'nivel_estudios', 'institucion_grado', 'titulo_grado', 'egreso_grado',
@@ -359,9 +348,8 @@ def display_output(legajos):
 
     if (legajos != [None]) & (legajos != []) & (legajos != [0]):
         for i in legajos:
-            if (i in persona_to_legajo.legajo) & (i != 0):
-                persona_id = persona_to_legajo.loc[persona_to_legajo.legajo == str(i)].persona.iloc[0]
-
+            if (i in persona_to_legajo.legajo.unique()) & (i != 0):
+                persona_id = persona_to_legajo.loc[persona_to_legajo.legajo == i].persona.iloc[0]
                 x = Alumno(persona_id)
                 if x.isPersona():
                     persona_db = x.getPersonalData()
