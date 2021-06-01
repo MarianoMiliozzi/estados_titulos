@@ -14,6 +14,31 @@ def parse_date(date):
     except:
         return date
 
+
+def get_SQL_list(panda_column, es_string):
+    panda_column = list(panda_column.unique())
+    panda_column = [str(i) for i in panda_column]
+    if es_string:
+        if len(panda_column) == 1:
+            return "('" + str(panda_column[0]) + "')"
+        else:
+            return "('" + "', '".join(panda_column) + "')"
+    else:
+        sql_list = "(" + ', '.join(panda_column) + ")"
+    return sql_list
+
+def get_personas_legajos(personas):
+    data_db = 'guarani3162posgrado'
+    conn = psycopg2.connect(database=data_db, user='postgres', password='uNTreF2019!!', host='170.210.45.210')
+    cur = conn.cursor()
+    cur.execute(f'''SELECT persona, legajo FROM negocio.sga_alumnos WHERE persona in {get_SQL_list(personas,False)}; ''')
+
+    cols = get_columns(cur.description)
+    persona_to_legajo = pd.DataFrame(cur.fetchall(), columns=cols)
+    conn.close()
+
+    return persona_to_legajo
+
 def get_solicitudes_activas():
     # obtenemos un listado de certificados únicos que no estén en el último estado
     conn = psycopg2.connect(database=data.data_db, user=data.user, password=data.password, host=data.host)
@@ -42,8 +67,6 @@ def get_solicitudes_activas():
 
     conn.close()
     return certif
-
-
 
 def get_solicitudes_filtradas(nros_solicitud=[]):
     conn = psycopg2.connect(database=data.data_db, user=data.user, password=data.password, host=data.host)
@@ -141,7 +164,6 @@ def get_datos_solicitud(solicitud=int):
     conn.close()
 
     return datos_sol
-
 
 def get_datos_documentacion(solicitud=int):
     conn = psycopg2.connect(database=data.data_db, user=data.user, password=data.password, host=data.host)

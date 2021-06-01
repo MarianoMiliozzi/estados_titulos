@@ -7,21 +7,6 @@ def get_columns(desc):
         cols.append(i[0])
     return cols
 
-def get_persona_from_legajo():
-    data_db = 'guarani3162posgrado'
-    conn = psycopg2.connect(database=data_db, user='postgres', password='uNTreF2019!!', host='170.210.45.210')
-    cur = conn.cursor()
-    cur.execute(f'''SELECT persona, legajo FROM negocio.sga_alumnos; ''')
-
-    cols = get_columns(cur.description)
-    persona_to_legajo = pd.DataFrame(cur.fetchall(), columns=cols)
-    conn.close()
-
-    return persona_to_legajo
-
-
-
-
 class Persona():
     data_db = 'guarani3162posgrado'
     data_db = 'guarani3162posgradoprueba'
